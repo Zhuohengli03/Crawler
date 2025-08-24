@@ -534,157 +534,203 @@ def show_result():
 # --------------------------------主爬虫运行----------------------------
 def do_crawling():
     options = Options()
+    
+    # Enhanced stability options to prevent crashes
     options.add_argument("--disable-features=EdgeChinaBrowsersImport")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")  # Disable images to reduce memory usage
+    options.add_argument("--disable-javascript")  # Disable JS if not needed
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=TranslateUI")
+    options.add_argument("--disable-ipc-flooding-protection")
+    
+    # Memory management
+    options.add_argument("--memory-pressure-off")
+    options.add_argument("--max_old_space_size=4096")
+    
+    # Window size and performance
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--start-maximized")
+    
     st.warning("爬取进行中，请稍候...")
     if st.session_state.headless:
         options.add_argument("--headless")
-    service = EdgeService(executable_path=st.session_state.driver_path)
-    driver = webdriver.Edge(service=service, options=options)
+    
+    try:
+        service = EdgeService(executable_path=st.session_state.driver_path)
+        driver = webdriver.Edge(service=service, options=options)
+        
+        # Set page load timeout
+        driver.set_page_load_timeout(30)
+        driver.implicitly_wait(10)
+        
+        # Set script timeout
+        driver.set_script_timeout(30)
+        
+    except Exception as e:
+        st.error(f"WebDriver启动失败: {e}")
+        st.error("请检查Edge浏览器和EdgeDriver是否正确安装")
+        return
 
-    # 是否新闻详情页，新闻详情页没有主元素
-    if st.session_state.new_content:
-        main_locator = ("", "")
+    try:
+        # 是否新闻详情页，新闻详情页没有主元素
+        if st.session_state.new_content:
+            main_locator = ("", "")
 
+            # 勾选新闻详情 - 是否勾选高级筛选
+            if st.session_state.higher_requests:
 
-        # 勾选新闻详情 - 是否勾选高级筛选
-        if st.session_state.higher_requests:
+                # 勾选新闻详情 - 勾选高级筛选
+                crawler = WebCrawler(
+                    driver=driver,
+                    url=st.session_state.url,
+                    header=st.session_state.header_request,
+                    wait_time=st.session_state.wait_time,
+                    time_sleep=st.session_state.time_sleep,
+                    main_locator=main_locator,
+                    title_locator=(
+                        st.session_state.by_mapping[st.session_state.title_key],
+                        st.session_state.title_column
+                    ),
+                    content_locator=(
+                        st.session_state.by_mapping[st.session_state.content_key],
+                        st.session_state.content_column
+                    ),
+                    image_locator=(
+                        st.session_state.by_mapping[st.session_state.image_key],
+                        st.session_state.image_column
+                    ),
+                    total_need=st.session_state.total_to_fetch,
+                    custom_fields=st.session_state.custom_fields,
+                    main_tag=st.session_state.main_tag,
+                    main_key_words=st.session_state.main_key_words,
+                    main_url_key_words=st.session_state.main_url_key_words,
+                    main_url_key_elements=st.session_state.main_url_key_elements,
+                    higher_requests=st.session_state.higher_requests
+                )
 
-            # 勾选新闻详情 - 勾选高级筛选
-            crawler = WebCrawler(
-                driver=driver,
-                url=st.session_state.url,
-                header=st.session_state.header_request,
-                wait_time=st.session_state.wait_time,
-                time_sleep=st.session_state.time_sleep,
-                main_locator=main_locator,
-                title_locator=(
-                    st.session_state.by_mapping[st.session_state.title_key],
-                    st.session_state.title_column
-                ),
-                content_locator=(
-                    st.session_state.by_mapping[st.session_state.content_key],
-                    st.session_state.content_column
-                ),
-                image_locator=(
-                    st.session_state.by_mapping[st.session_state.image_key],
-                    st.session_state.image_column
-                ),
-                total_need=st.session_state.total_to_fetch,
-                custom_fields=st.session_state.custom_fields,
-                main_tag=st.session_state.main_tag,
-                main_key_words=st.session_state.main_key_words,
-                main_url_key_words=st.session_state.main_url_key_words,
-                main_url_key_elements=st.session_state.main_url_key_elements,
-                higher_requests=st.session_state.higher_requests
-            )
+                crawler.content()
+                save_json()
+                st.session_state.crawling = False
+                st.session_state.show_results = True
+                st.session_state.final_content = crawler.results
 
-            crawler.content()
-            save_json()
-            st.session_state.crawling = False
-            st.session_state.show_results = True
-            st.session_state.final_content = crawler.results
+                # 勾选新闻详情 - 未勾选高级筛选(使用关键字)
+            elif st.session_state.main_key_words:
 
-            # 勾选新闻详情 - 未勾选高级筛选(使用关键字)
-        elif st.session_state.main_key_words:
+                crawler = WebCrawler(
+                    driver=driver,
+                    url=st.session_state.url,
+                    header=st.session_state.header_request,
+                    wait_time=st.session_state.wait_time,
+                    time_sleep=st.session_state.time_sleep,
+                    main_locator='',
+                    title_locator='',
+                    content_locator='',
+                    image_locator='',
+                    total_need='',
+                    custom_fields='',
+                    main_tag='',
+                    main_key_words=st.session_state.main_key_words,
+                    main_url_key_words=st.session_state.main_url_key_words,
+                    main_url_key_elements=st.session_state.main_url_key_elements,
+                    higher_requests=st.session_state.higher_requests
+                )
 
-            crawler = WebCrawler(
-                driver=driver,
-                url=st.session_state.url,
-                header=st.session_state.header_request,
-                wait_time=st.session_state.wait_time,
-                time_sleep=st.session_state.time_sleep,
-                main_locator='',
-                title_locator='',
-                content_locator='',
-                image_locator='',
-                total_need='',
-                custom_fields='',
-                main_tag='',
-                main_key_words=st.session_state.main_key_words,
-                main_url_key_words=st.session_state.main_url_key_words,
-                main_url_key_elements=st.session_state.main_url_key_elements,
-                higher_requests=st.session_state.higher_requests
-            )
+                crawler.zhengze_calculate(hurl='')
+                save_json()
+                st.session_state.crawling = False
+                st.session_state.show_results = True
+                st.session_state.final_content = crawler.zhengze_text
 
-            crawler.zhengze_calculate(hurl='')
-            save_json()
-            st.session_state.crawling = False
-            st.session_state.show_results = True
-            st.session_state.final_content = crawler.zhengze_text
+        # 未勾选新闻详情 - 勾选高级筛选
+        if not st.session_state.new_content:
 
+            if st.session_state.higher_requests:
+                crawler = WebCrawler(
+                    driver=driver,
+                    url=st.session_state.url,
+                    header=st.session_state.header_request,
+                    wait_time=st.session_state.wait_time,
+                    time_sleep=st.session_state.time_sleep,
+                    main_locator=(
+                        st.session_state.by_mapping[st.session_state.main_key],
+                        st.session_state.main_column
+                    ),
+                    title_locator=(
+                        st.session_state.by_mapping[st.session_state.title_key],
+                        st.session_state.title_column
+                    ),
+                    content_locator=(
+                        st.session_state.by_mapping[st.session_state.content_key],
+                        st.session_state.content_column
+                    ),
+                    image_locator=(
+                        st.session_state.by_mapping[st.session_state.image_key],
+                        st.session_state.image_column
+                    ),
+                    total_need=st.session_state.total_to_fetch,
+                    custom_fields=st.session_state.custom_fields,
+                    main_tag=st.session_state.main_tag,
+                    main_key_words=st.session_state.main_key_words,
+                    main_url_key_words=st.session_state.main_url_key_words,
+                    main_url_key_elements=st.session_state.main_url_key_elements,
+                    higher_requests=st.session_state.higher_requests
+                )
 
+                crawler.result_()
+                save_json()
+                st.session_state.crawling = False
+                st.session_state.show_results = True
+                st.session_state.final_content = crawler.results
 
-    # 未勾选新闻详情 - 勾选高级筛选
-    if not st.session_state.new_content:
+            # 未勾选新闻详情 - 未勾选高级筛选
+            else:
 
-        if st.session_state.higher_requests:
-            crawler = WebCrawler(
-                driver=driver,
-                url=st.session_state.url,
-                header=st.session_state.header_request,
-                wait_time=st.session_state.wait_time,
-                time_sleep=st.session_state.time_sleep,
-                main_locator=(
-                    st.session_state.by_mapping[st.session_state.main_key],
-                    st.session_state.main_column
-                ),
-                title_locator=(
-                    st.session_state.by_mapping[st.session_state.title_key],
-                    st.session_state.title_column
-                ),
-                content_locator=(
-                    st.session_state.by_mapping[st.session_state.content_key],
-                    st.session_state.content_column
-                ),
-                image_locator=(
-                    st.session_state.by_mapping[st.session_state.image_key],
-                    st.session_state.image_column
-                ),
-                total_need=st.session_state.total_to_fetch,
-                custom_fields=st.session_state.custom_fields,
-                main_tag=st.session_state.main_tag,
-                main_key_words=st.session_state.main_key_words,
-                main_url_key_words=st.session_state.main_url_key_words,
-                main_url_key_elements=st.session_state.main_url_key_elements,
-                higher_requests=st.session_state.higher_requests
-            )
+                crawler = WebCrawler(
+                    driver=driver,
+                    url=st.session_state.url,
+                    header=st.session_state.header_request,
+                    wait_time=st.session_state.wait_time,
+                    time_sleep=st.session_state.time_sleep,
+                    main_locator='',
+                    title_locator='',
+                    content_locator='',
+                    image_locator='',
+                    total_need=st.session_state.total_to_fetch,
+                    custom_fields=st.session_state.custom_fields,
+                    main_tag=st.session_state.main_tag,
+                    main_key_words=st.session_state.main_key_words,
+                    main_url_key_words=st.session_state.main_url_key_words,
+                    main_url_key_elements=st.session_state.main_url_key_elements,
+                    higher_requests=st.session_state.higher_requests
 
-            crawler.result_()
-            save_json()
-            st.session_state.crawling = False
-            st.session_state.show_results = True
-            st.session_state.final_content = crawler.results
+                )
 
-        # 未勾选新闻详情 - 未勾选高级筛选
-        else:
+                st.write("正在以关键词进行爬取...")
+                crawler.result_()
+                save_json()
+                st.session_state.crawling = False
+                st.session_state.show_results = True
+                st.session_state.higher_requests = False
+                st.session_state.final_content = crawler.zhengze_text
 
-            crawler = WebCrawler(
-                driver=driver,
-                url=st.session_state.url,
-                header=st.session_state.header_request,
-                wait_time=st.session_state.wait_time,
-                time_sleep=st.session_state.time_sleep,
-                main_locator='',
-                title_locator='',
-                content_locator='',
-                image_locator='',
-                total_need=st.session_state.total_to_fetch,
-                custom_fields=st.session_state.custom_fields,
-                main_tag=st.session_state.main_tag,
-                main_key_words=st.session_state.main_key_words,
-                main_url_key_words=st.session_state.main_url_key_words,
-                main_url_key_elements=st.session_state.main_url_key_elements,
-                higher_requests=st.session_state.higher_requests
-
-            )
-
-            st.write("正在以关键词进行爬取...")
-            crawler.result_()
-            save_json()
-            st.session_state.crawling = False
-            st.session_state.show_results = True
-            st.session_state.higher_requests = False
-            st.session_state.final_content = crawler.zhengze_text
+    except Exception as e:
+        st.error(f"爬取过程中出现错误: {e}")
+        st.error("请检查网络连接和网页元素选择器是否正确")
+    finally:
+        try:
+            driver.quit()
+        except:
+            pass
 
 
 initial()
