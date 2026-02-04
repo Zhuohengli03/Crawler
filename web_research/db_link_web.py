@@ -1,35 +1,13 @@
-import mysql.connector
-from mysql.connector import Error
-import streamlit as st
+"""
+数据库连接模块（web_research）
+从 web_dynamic_files 导入以保持一致性
+"""
+import sys
+import os
 
+# 添加 web_dynamic_files 目录到路径
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web_dynamic_files'))
 
-def link_db(host, user, password, database, port):
-    try:
-        connection = mysql.connector.connect(
-            host= host,
-            user= user,
-            password=password,
-            database=database,
-            port=int(port),
+from db_link_web import link_db, close_db, get_db_connection, reset_connection_pool
 
-        )
-
-        if connection.is_connected():
-            st.success("数据库连接成功")
-
-            # print("数据库连接成功")
-            # ---------注意要返回打开的链接，否则其他模块调用的时候链接默认被关闭--------
-           # -------没有return默认返回none----------
-            return connection
-
-    except Error as e:
-        st.error(f"链接数据库出错{e}")
-
-def close_db(connection, cursor):
-    if cursor:
-        cursor.close()
-    if connection and connection.is_connected():
-        connection.close()
-        st.success("数据库已关闭")
-
-# link_db()
+__all__ = ['link_db', 'close_db', 'get_db_connection', 'reset_connection_pool']

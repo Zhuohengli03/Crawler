@@ -1,79 +1,37 @@
-# 读取、写入、解析 JSON 数据（JSON 是一种轻量级的数据交换格式）
+"""
+动态网页爬虫主模块 | Dynamic Web Crawler Main Module
+提供 Streamlit UI 界面和爬虫控制逻辑
+"""
 import json
-# 处理路径、文件、目录、系统环境变量等
 import os
-# 文本中查找、提取、替换复杂模式（如手机号、网址、日期），正则算法
-import re
-import uuid
+import sys
 
-# 导入streamlit库
 import streamlit as st
-# 导入 元素定位方式
 from selenium.webdriver.common.by import By
-# 创建浏览器入口
 from selenium import webdriver
-# 定制 EdgeDriver 的启动方式通过edge，".<edge>."可更换
 from selenium.webdriver.edge.service import Service as EdgeService
-# 配置相应驱动器参数，如：是否无头运行（headless）、禁用扩展、窗口大小、是否启用日志、代理等
 from selenium.webdriver.edge.options import Options
-from db_write_web import create_table, insert_news, get_url_name
 import pandas as pd
-from result_web import WebCrawler
 import io
 
+# 添加路径以导入模块
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_parent_dir = os.path.dirname(_current_dir)
+sys.path.insert(0, _parent_dir)  # 父目录（用于 config, i18n）
+sys.path.insert(0, _current_dir)  # 当前目录（用于 db_write_web, result_web）
 
-def detect_data_type(value):
-    if pd.isna(value):
-        return "TEXT"
-    if isinstance(value, int):
-        return "INT"
-    if isinstance(value, float):
-        return "FLOAT"
-    if isinstance(value, bool):
-        return "BOOLEAN"
-    if re.match(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', str(value)):
-        return "DATETIME"
-    if re.match(r'^\d{4}-\d{2}-\d{2}', str(value)):
-        return "DATE"
-    if len(str(value)) < 500:
-        return "VARCHAR(500)"
-    if len(str(value)) >= 500:
-        return "LONGTEXT"
-    if re.match(r'^https?://', str(value)):
-        return "LONGTEXT"
-    return "LONGTEXT"
+from config import (
+    BY_MAPPING, DEFAULT_DB_CONFIG, DEFAULT_CRAWLER_CONFIG,
+    WEBDRIVER_OPTIONS, generate_table_schema, get_webdriver_options
+)
+from i18n import t
+from db_write_web import create_table, insert_news, get_url_name
+from result_web import WebCrawler
 
 
-def generate_table_schema(data):
-    """根据爬取的数据生成表结构"""
-    if not data:
-        return {}
-
-    # 合并所有数据点的键
-    # """set()成员检测、消除重复元素"""
-    all_keys = set()
-    for item in data:
-        all_keys.update(item.keys())
-
-    # 为每个键确定数据类型
-    schema = {}
-    for key in all_keys:
-        # 收集该键的所有值
-        values = [item.get(key) for item in data if key in item]
-        if not values:
-            schema[key] = "TEXT"
-            continue
-
-        # 检测数据类型
-        detected_types = {detect_data_type(v) for v in values}
-
-        # 如果有多种类型，默认使用TEXT
-        if len(detected_types) > 1:
-            schema[key] = "LONGTEXT"
-        else:
-            schema[key] = detected_types.pop()
-
-    return schema
+def get_lang():
+    """获取当前语言设置"""
+    return st.session_state.get('lang', 'zh')
 
 
 def save_json(filename="pages_rubbish.json"):
@@ -162,10 +120,12 @@ def initial():
 
 # ----------------------------用户交互-----------------------------------------------
 def UI(key_prefix="main"):
+    lang = get_lang()
+    
     if not st.session_state.crawling:
         # 页面布局
-        st.title("**🔍动态网站爬虫工具**")
-        st.markdown(">*介绍：*")
+        st.title(t("crawler_title", lang))
+        st.markdown(t("intro", lang))
         st.markdown(">*当前工具默认爬取无刷加载网页，即不分页下拉自动加载。如：“今日头条”、“稀土掘金”等*")
         st.markdown(">*如果当前网址已经进入新闻，请勾选“当前为新闻详情页”*")
         st.markdown(">*运行过程中多次点击按钮*")
@@ -244,13 +204,8 @@ def higher_or_tag(url, driver_path, wait_time, time_sleep, headless):
         # 使用高级筛选
         # 元素定位设置
         st.subheader("元素定位")
-        st.session_state.by_mapping = {
-            "XPATH": By.XPATH,
-            "CSS选择器": By.CSS_SELECTOR,
-            "ID": By.ID,
-            "CLASS": By.CLASS_NAME,
-            "TAG": By.TAG_NAME
-        }
+        # 使用公共配置模块的 BY_MAPPING
+        st.session_state.by_mapping = BY_MAPPING
 
         # 如果未勾选新闻详情页（新闻详情页不需要主标签）
         if not st.session_state.new_content:
@@ -258,7 +213,7 @@ def higher_or_tag(url, driver_path, wait_time, time_sleep, headless):
             st.write("**新闻url标签设置(新闻列表)**")
             col1, col2 = st.columns(2)
             with col1:
-                st.selectbox("定位方式", list(st.session_state.by_mapping.keys()), key="main_key")
+                st.selectbox("定位方式", list(BY_MAPPING.keys()), key="main_key")
             with col2:
                 st.text_input("标签", '//div[contains(@class, "title-row")]//a',
                               key="main_column")
@@ -267,7 +222,7 @@ def higher_or_tag(url, driver_path, wait_time, time_sleep, headless):
         st.write("**标题元素标签设置**")
         col1, col2 = st.columns(2)
         with col1:
-            st.selectbox("定位方式", list(st.session_state.by_mapping.keys()), key="title_key")
+            st.selectbox("定位方式", list(BY_MAPPING.keys()), key="title_key")
         with col2:
             st.text_input("选择器", '//h1[contains(@class, "article-title")]',
                           key="title_column")
@@ -276,7 +231,7 @@ def higher_or_tag(url, driver_path, wait_time, time_sleep, headless):
         st.write("**内容元素标签设置**")
         col1, col2 = st.columns(2)
         with col1:
-            st.selectbox("定位方式", list(st.session_state.by_mapping.keys()),
+            st.selectbox("定位方式", list(BY_MAPPING.keys()),
                          key="content_key")
         with col2:
             st.text_input("选择器", '//div[contains(@class, "article-viewer markdown-body")]',
@@ -286,7 +241,7 @@ def higher_or_tag(url, driver_path, wait_time, time_sleep, headless):
         st.write("**图片元素标签设置**")
         col1, col2 = st.columns(2)
         with col1:
-            st.selectbox("定位方式", list(st.session_state.by_mapping.keys()), key="image_key")
+            st.selectbox("定位方式", list(BY_MAPPING.keys()), key="image_key")
         with col2:
             st.text_input("选择器", '//div[contains(@id, "article-root")]//img', key="image_column")
 
@@ -307,7 +262,7 @@ def user_definition(url, driver_path, wait_time, time_sleep, headless, higher_re
                                   help="当前需要爬取的类型")
         # st.write(f"你选择的字段类型是：{field_type}，类型是：{type(field_type)}")
 
-        by = st.selectbox("定位方式", list(st.session_state.by_mapping.keys()), key=f"{name}_{field_type}")
+        by = st.selectbox("定位方式", list(BY_MAPPING.keys()), key=f"{name}_{field_type}")
         selector = st.text_input("选择器", '//td[contains(@class, "infobox-full-data")]')
 
         if st.button("确认"):
@@ -340,7 +295,7 @@ def user_definition(url, driver_path, wait_time, time_sleep, headless, higher_re
                                                  field["type"]), key=f"type_{i + 1}")
 
             with col2:
-                field["by"] = st.selectbox(f"定位方式", list(st.session_state.by_mapping.keys()),
+                field["by"] = st.selectbox(f"定位方式", list(BY_MAPPING.keys()),
                                            key=f"{i + 1}_key")
 
             with col3:
@@ -531,197 +486,208 @@ def show_result():
             st.rerun()
 
 
-# --------------------------------主爬虫运行----------------------------
-def do_crawling():
+# ==================== 辅助函数 ====================
+
+def create_webdriver():
+    """
+    创建并配置 WebDriver
+    
+    Returns:
+        WebDriver 实例或 None（如果创建失败）
+    """
     options = Options()
     
-    # Enhanced stability options to prevent crashes
-    options.add_argument("--disable-features=EdgeChinaBrowsersImport")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-plugins")
-    options.add_argument("--disable-images")  # Disable images to reduce memory usage
-    options.add_argument("--disable-javascript")  # Disable JS if not needed
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
-    options.add_argument("--disable-features=TranslateUI")
-    options.add_argument("--disable-ipc-flooding-protection")
-    
-    # Memory management
-    options.add_argument("--memory-pressure-off")
-    options.add_argument("--max_old_space_size=4096")
-    
-    # Window size and performance
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--start-maximized")
-    
-    st.warning("爬取进行中，请稍候...")
-    if st.session_state.headless:
-        options.add_argument("--headless")
+    # 使用公共配置的 WebDriver 选项
+    for opt in get_webdriver_options(st.session_state.headless):
+        options.add_argument(opt)
     
     try:
         service = EdgeService(executable_path=st.session_state.driver_path)
         driver = webdriver.Edge(service=service, options=options)
         
-        # Set page load timeout
-        driver.set_page_load_timeout(30)
-        driver.implicitly_wait(10)
+        # 设置超时
+        config = DEFAULT_CRAWLER_CONFIG
+        driver.set_page_load_timeout(config["page_load_timeout"])
+        driver.implicitly_wait(config["implicit_wait"])
+        driver.set_script_timeout(config["script_timeout"])
         
-        # Set script timeout
-        driver.set_script_timeout(30)
-        
+        return driver
     except Exception as e:
         st.error(f"WebDriver启动失败: {e}")
         st.error("请检查Edge浏览器和EdgeDriver是否正确安装")
+        return None
+
+
+def create_crawler_for_detail_page(driver, advanced_mode: bool):
+    """
+    为新闻详情页创建爬虫实例
+    
+    Args:
+        driver: WebDriver 实例
+        advanced_mode: 是否使用高级筛选模式
+    
+    Returns:
+        WebCrawler 实例
+    """
+    main_locator = ("", "")
+    
+    if advanced_mode:
+        return WebCrawler(
+            driver=driver,
+            url=st.session_state.url,
+            header=st.session_state.header_request,
+            wait_time=st.session_state.wait_time,
+            time_sleep=st.session_state.time_sleep,
+            main_locator=main_locator,
+            title_locator=(
+                BY_MAPPING[st.session_state.title_key],
+                st.session_state.title_column
+            ),
+            content_locator=(
+                BY_MAPPING[st.session_state.content_key],
+                st.session_state.content_column
+            ),
+            image_locator=(
+                BY_MAPPING[st.session_state.image_key],
+                st.session_state.image_column
+            ),
+            total_need=st.session_state.total_to_fetch,
+            custom_fields=st.session_state.custom_fields,
+            main_tag=st.session_state.main_tag,
+            main_key_words=st.session_state.main_key_words,
+            main_url_key_words=st.session_state.main_url_key_words,
+            main_url_key_elements=st.session_state.main_url_key_elements,
+            higher_requests=st.session_state.higher_requests
+        )
+    else:
+        return WebCrawler(
+            driver=driver,
+            url=st.session_state.url,
+            header=st.session_state.header_request,
+            wait_time=st.session_state.wait_time,
+            time_sleep=st.session_state.time_sleep,
+            main_locator='',
+            title_locator='',
+            content_locator='',
+            image_locator='',
+            total_need='',
+            custom_fields='',
+            main_tag='',
+            main_key_words=st.session_state.main_key_words,
+            main_url_key_words=st.session_state.main_url_key_words,
+            main_url_key_elements=st.session_state.main_url_key_elements,
+            higher_requests=st.session_state.higher_requests
+        )
+
+
+def create_crawler_for_list_page(driver, advanced_mode: bool):
+    """
+    为新闻列表页创建爬虫实例
+    
+    Args:
+        driver: WebDriver 实例
+        advanced_mode: 是否使用高级筛选模式
+    
+    Returns:
+        WebCrawler 实例
+    """
+    if advanced_mode:
+        return WebCrawler(
+            driver=driver,
+            url=st.session_state.url,
+            header=st.session_state.header_request,
+            wait_time=st.session_state.wait_time,
+            time_sleep=st.session_state.time_sleep,
+            main_locator=(
+                BY_MAPPING[st.session_state.main_key],
+                st.session_state.main_column
+            ),
+            title_locator=(
+                BY_MAPPING[st.session_state.title_key],
+                st.session_state.title_column
+            ),
+            content_locator=(
+                BY_MAPPING[st.session_state.content_key],
+                st.session_state.content_column
+            ),
+            image_locator=(
+                BY_MAPPING[st.session_state.image_key],
+                st.session_state.image_column
+            ),
+            total_need=st.session_state.total_to_fetch,
+            custom_fields=st.session_state.custom_fields,
+            main_tag=st.session_state.main_tag,
+            main_key_words=st.session_state.main_key_words,
+            main_url_key_words=st.session_state.main_url_key_words,
+            main_url_key_elements=st.session_state.main_url_key_elements,
+            higher_requests=st.session_state.higher_requests
+        )
+    else:
+        return WebCrawler(
+            driver=driver,
+            url=st.session_state.url,
+            header=st.session_state.header_request,
+            wait_time=st.session_state.wait_time,
+            time_sleep=st.session_state.time_sleep,
+            main_locator='',
+            title_locator='',
+            content_locator='',
+            image_locator='',
+            total_need=st.session_state.total_to_fetch,
+            custom_fields=st.session_state.custom_fields,
+            main_tag=st.session_state.main_tag,
+            main_key_words=st.session_state.main_key_words,
+            main_url_key_words=st.session_state.main_url_key_words,
+            main_url_key_elements=st.session_state.main_url_key_elements,
+            higher_requests=st.session_state.higher_requests
+        )
+
+
+# ================================ 主爬虫运行 ================================
+
+def do_crawling():
+    """主爬虫运行函数"""
+    st.warning("爬取进行中，请稍候...")
+    
+    # 创建 WebDriver
+    driver = create_webdriver()
+    if not driver:
         return
 
     try:
-        # 是否新闻详情页，新闻详情页没有主元素
-        if st.session_state.new_content:
-            main_locator = ("", "")
-
-            # 勾选新闻详情 - 是否勾选高级筛选
-            if st.session_state.higher_requests:
-
-                # 勾选新闻详情 - 勾选高级筛选
-                crawler = WebCrawler(
-                    driver=driver,
-                    url=st.session_state.url,
-                    header=st.session_state.header_request,
-                    wait_time=st.session_state.wait_time,
-                    time_sleep=st.session_state.time_sleep,
-                    main_locator=main_locator,
-                    title_locator=(
-                        st.session_state.by_mapping[st.session_state.title_key],
-                        st.session_state.title_column
-                    ),
-                    content_locator=(
-                        st.session_state.by_mapping[st.session_state.content_key],
-                        st.session_state.content_column
-                    ),
-                    image_locator=(
-                        st.session_state.by_mapping[st.session_state.image_key],
-                        st.session_state.image_column
-                    ),
-                    total_need=st.session_state.total_to_fetch,
-                    custom_fields=st.session_state.custom_fields,
-                    main_tag=st.session_state.main_tag,
-                    main_key_words=st.session_state.main_key_words,
-                    main_url_key_words=st.session_state.main_url_key_words,
-                    main_url_key_elements=st.session_state.main_url_key_elements,
-                    higher_requests=st.session_state.higher_requests
-                )
-
+        is_detail_page = st.session_state.new_content
+        advanced_mode = st.session_state.higher_requests
+        
+        # 根据页面类型和模式创建爬虫
+        if is_detail_page:
+            crawler = create_crawler_for_detail_page(driver, advanced_mode)
+            
+            if advanced_mode:
+                # 新闻详情页 + 高级筛选
                 crawler.content()
-                save_json()
-                st.session_state.crawling = False
-                st.session_state.show_results = True
                 st.session_state.final_content = crawler.results
-
-                # 勾选新闻详情 - 未勾选高级筛选(使用关键字)
             elif st.session_state.main_key_words:
-
-                crawler = WebCrawler(
-                    driver=driver,
-                    url=st.session_state.url,
-                    header=st.session_state.header_request,
-                    wait_time=st.session_state.wait_time,
-                    time_sleep=st.session_state.time_sleep,
-                    main_locator='',
-                    title_locator='',
-                    content_locator='',
-                    image_locator='',
-                    total_need='',
-                    custom_fields='',
-                    main_tag='',
-                    main_key_words=st.session_state.main_key_words,
-                    main_url_key_words=st.session_state.main_url_key_words,
-                    main_url_key_elements=st.session_state.main_url_key_elements,
-                    higher_requests=st.session_state.higher_requests
-                )
-
+                # 新闻详情页 + 关键词模式
                 crawler.zhengze_calculate(hurl='')
-                save_json()
-                st.session_state.crawling = False
-                st.session_state.show_results = True
                 st.session_state.final_content = crawler.zhengze_text
-
-        # 未勾选新闻详情 - 勾选高级筛选
-        if not st.session_state.new_content:
-
-            if st.session_state.higher_requests:
-                crawler = WebCrawler(
-                    driver=driver,
-                    url=st.session_state.url,
-                    header=st.session_state.header_request,
-                    wait_time=st.session_state.wait_time,
-                    time_sleep=st.session_state.time_sleep,
-                    main_locator=(
-                        st.session_state.by_mapping[st.session_state.main_key],
-                        st.session_state.main_column
-                    ),
-                    title_locator=(
-                        st.session_state.by_mapping[st.session_state.title_key],
-                        st.session_state.title_column
-                    ),
-                    content_locator=(
-                        st.session_state.by_mapping[st.session_state.content_key],
-                        st.session_state.content_column
-                    ),
-                    image_locator=(
-                        st.session_state.by_mapping[st.session_state.image_key],
-                        st.session_state.image_column
-                    ),
-                    total_need=st.session_state.total_to_fetch,
-                    custom_fields=st.session_state.custom_fields,
-                    main_tag=st.session_state.main_tag,
-                    main_key_words=st.session_state.main_key_words,
-                    main_url_key_words=st.session_state.main_url_key_words,
-                    main_url_key_elements=st.session_state.main_url_key_elements,
-                    higher_requests=st.session_state.higher_requests
-                )
-
+        else:
+            crawler = create_crawler_for_list_page(driver, advanced_mode)
+            
+            if advanced_mode:
+                # 新闻列表页 + 高级筛选
                 crawler.result_()
-                save_json()
-                st.session_state.crawling = False
-                st.session_state.show_results = True
                 st.session_state.final_content = crawler.results
-
-            # 未勾选新闻详情 - 未勾选高级筛选
             else:
-
-                crawler = WebCrawler(
-                    driver=driver,
-                    url=st.session_state.url,
-                    header=st.session_state.header_request,
-                    wait_time=st.session_state.wait_time,
-                    time_sleep=st.session_state.time_sleep,
-                    main_locator='',
-                    title_locator='',
-                    content_locator='',
-                    image_locator='',
-                    total_need=st.session_state.total_to_fetch,
-                    custom_fields=st.session_state.custom_fields,
-                    main_tag=st.session_state.main_tag,
-                    main_key_words=st.session_state.main_key_words,
-                    main_url_key_words=st.session_state.main_url_key_words,
-                    main_url_key_elements=st.session_state.main_url_key_elements,
-                    higher_requests=st.session_state.higher_requests
-
-                )
-
+                # 新闻列表页 + 关键词模式
                 st.write("正在以关键词进行爬取...")
                 crawler.result_()
-                save_json()
-                st.session_state.crawling = False
-                st.session_state.show_results = True
                 st.session_state.higher_requests = False
                 st.session_state.final_content = crawler.zhengze_text
+        
+        # 保存状态
+        save_json()
+        st.session_state.crawling = False
+        st.session_state.show_results = True
 
     except Exception as e:
         st.error(f"爬取过程中出现错误: {e}")
@@ -729,8 +695,10 @@ def do_crawling():
     finally:
         try:
             driver.quit()
-        except:
+        except Exception:
             pass
 
 
-initial()
+# 仅在直接运行时执行
+if __name__ == "__main__":
+    initial()

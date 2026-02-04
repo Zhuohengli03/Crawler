@@ -1,0 +1,14 @@
+[server]
+# 禁用文件监控以避免 FSEvents 警告
+fileWatcherType = "none"
+
+[browser]
+# 自动打开浏览器
+gatherUsageStats = false
+
+[theme]
+# 可选：自定义主题颜色
+# primaryColor = "#FF6B6B"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F0F2F6"
+# textColor = "#262730"

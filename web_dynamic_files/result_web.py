@@ -1,12 +1,24 @@
+"""
+网页爬虫核心类 | WebCrawler Core Class
+提供页面滚动、元素收集、内容提取等核心功能
+"""
 import time
+import os
+import sys
+import gc
 from urllib.parse import urljoin
+from typing import List, Dict, Any, Optional, Tuple
+
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.devtools.v136.dom import get_attributes
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import streamlit as st
 import re
+
+# 添加父目录到路径以导入公共配置
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import BY_MAPPING, REGEX_PATTERNS, DEFAULT_CRAWLER_CONFIG
 
 
 class WebCrawler:
@@ -622,29 +634,30 @@ class WebCrawler:
 
         # 用户有是否有自定义
 
-    def custom_(self):
-        st.session_state.by_mapping = {
-            "XPATH": By.XPATH,
-            "CSS选择器": By.CSS_SELECTOR,
-            "ID": By.ID,
-            "CLASS": By.CLASS_NAME,
-            "TAG": By.TAG_NAME
-        }
+    def custom_(self) -> Dict[str, Any]:
+        """处理用户自定义字段提取"""
         i = 0
         custom_Data = {}
+        
         # 如果自定义有内容
         for field in self.custom_fields:
-            type = field.get("type")
+            field_type = field.get("type")
             name = field.get("name")
             custom_data = {name: ""}
             by = field.get("by")
-            by_locator = st.session_state.by_mapping[by]
+            # 使用公共配置的 BY_MAPPING
+            by_locator = BY_MAPPING.get(by, By.XPATH)
             locator = field.get("selector")
             i += 1
-            elements = self.driver.find_elements(by_locator, locator)
+            
+            try:
+                elements = self.driver.find_elements(by_locator, locator)
+            except Exception as e:
+                st.warning(f"查找自定义字段 {name} 失败: {e}")
+                continue
+                
             if elements:
-                # st.success(f"成功找到 {field["type"]} 元素")
-                if type in ["文本"]:
+                if field_type in ["文本"]:
                     content = []
                     for element in elements:
                         if element:
@@ -652,59 +665,68 @@ class WebCrawler:
                             content.append(text)
                     custom_data[name] = "\n ".join(content)
 
-                elif type in ["链接" or "网址"]:
+                elif field_type in ["链接", "网址"]:
+                    links = []
                     for element in elements:
                         link = element.get_attribute("href")
-                        custom_data[name] = link
+                        if link:
+                            links.append(link)
+                    custom_data[name] = "\n".join(links) if links else ""
 
-                elif type == "图片":
+                elif field_type == "图片":
+                    images = []
                     for element in elements:
                         link = element.get_attribute("src")
-                        custom_data[name] = link
-
-
+                        if link:
+                            images.append(link)
+                    custom_data[name] = "\n".join(images) if images else ""
             else:
-                st.warning(f"第 {i} 条无 {field["type"]} 元素")
+                st.warning(f"第 {i} 条无 {field_type} 元素")
 
             custom_Data.update(custom_data)
         return custom_Data
 
 
-    # 关键词（正则算法）
-    def zhengze_calculate(self, hurl):
-
+    def zhengze_calculate(self, hurl: str) -> None:
+        """
+        使用正则表达式提取页面内容
+        
+        Args:
+            hurl: 目标 URL（为空则使用 self.url）
+        """
         time.sleep(self.time_sleep)
-        if hurl:
-            self.url = hurl
-            self.driver.get(self.url)
-        else:
-            self.driver.get(self.url)
+        
+        target_url = hurl if hurl else self.url
+        try:
+            self.driver.get(target_url)
+        except Exception as e:
+            st.error(f"访问页面失败: {e}")
+            return
 
-        page = self.driver.page_source
-        content = BeautifulSoup(page, "lxml")
+        try:
+            page = self.driver.page_source
+            content = BeautifulSoup(page, "lxml")
+        except Exception as e:
+            st.error(f"解析页面失败: {e}")
+            return
 
-        zhengze_content = {
-            "URL":self.url,
-        }
+        zhengze_content = {"URL": target_url}
         key_words = self.main_key_words
-        pattern_map = {
-            "网址": r'https?://[^\s<>"]+',
-            "电话": r'\b(?:\+[()\d]{2,3})?1\d{10}\b|\b(?:\d{3}[-\s]){3}\b',
-            "邮箱": r'[\w\.]+@[\w]+\.[\w]{0,4}',
-            "年龄": r'^(?:120|1[01][0-9]|[1-9][0-9]?|[1-9])$',
-            "图片": r'<img.*?src="([^"]+)[.jpg|.png|.gif|.image]*"',
-        # 可扩展其它关键词及对应正则
-        }
 
-        if key_words in pattern_map:
-            matches = re.findall(pattern_map[key_words], str(content))
+        # 使用公共配置的正则模式
+        if key_words in REGEX_PATTERNS:
+            pattern = REGEX_PATTERNS[key_words]
+            matches = re.findall(pattern, str(content))
 
             if matches:
-                results = set([f"{m}" for m in matches])
+                # 去重并格式化结果
+                results = set(str(m) for m in matches)
                 zhengze_content[key_words] = "\n".join(results)
             else:
-                zhengze_content[key_words] = f"未找到匹配内容"
-
+                zhengze_content[key_words] = "未找到匹配内容"
+        else:
+            st.warning(f"未知的关键词类型: {key_words}")
+            zhengze_content[key_words] = "未知关键词"
 
         self.zhengze_text.append(zhengze_content)
 
